@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poznáváčka</title>
+
+<style>
+body{
+    font-family: Arial;
+    text-align:center;
+    background:#f5f5f5;
+    margin:0;
+    padding:20px;
+}
+
+.container{
+    max-width:800px;
+    margin:auto;
+}
+
+.card{
+    background:white;
+    padding:20px;
+    border-radius:10px;
+    margin-top:10px;
+}
+
+input{
+    padding:8px;
+    width:80%;
+    margin-top:10px;
+}
+
+button{
+    padding:8px 12px;
+    margin:5px;
+    cursor:pointer;
+}
+
+.small{ color:gray; }
+
+/* ===== MENU STYL ===== */
+.category-box{
+    background:#eee;
+    margin:8px 0;
+    border-radius:8px;
+    padding:10px;
+    text-align:left;
+}
+
+.category-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+.org-list{
+    margin-top:8px;
+    padding-left:10px;
+}
+
+.org-item{
+    display:flex;
+    justify-content:space-between;
+    padding:3px 0;
+    font-size:14px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Poznáváčka</h1>
+
+<div class="card">
+
+<button onclick="toggleSettings()">⚙️ Nastavení</button>
+<button onclick="restart()">🔄 Restart</button>
+
+<div id="settings" style="display:none; text-align:left;">
+
+<h3>Výběr kategorií</h3>
+
+<div id="selector"></div>
+
+<h3>Režim</h3>
+<select id="mode">
+    <option value="random">Náhodně</option>
+    <option value="order">Po řadě</option>
+</select>
+
+<br><br>
+<button onclick="applySettings()">Použít</button>
+
+</div>
+
+</div>
+
+<div class="card">
+
+<h2>Poznáváčka</h2>
+
+<p class="small" id="category"></p>
+
+<input id="answer" placeholder="Napiš odpověď">
+
+<br>
+
+<button onclick="check()">Odeslat</button>
+<button onclick="skip()">Nevím</button>
+
+<p id="result"></p>
+
+<p>Skóre: <span id="score">0</span> / <span id="total">0</span></p>
+
+</div>
+
+</div>
+
+<script>
+
+// ===== DATA =====
+const data = [
+{name:"Anabaena", category:"Sinice"},
+{name:"drkalka", category:"Sinice"},
+{name:"sinivka", category:"Sinice"},
+
+{name:"bachořec", category:"Protista"},
+{name:"bobovka", category:"Protista"},
+{name:"bobulák", category:"Protista"},
+{name:"trepka", category:"Protista"},
+
+{name:"bedla", category:"Houby"},
+{name:"čirůvka", category:"Houby"},
+{name:"dřevomorka", category:"Houby"},
+{name:"hlíva ústřičná", category:"Houby"},
+{name:"hřib pravý", category:"Houby"},
+
+{name:"krásivka", category:"Řasy"},
+{name:"řasokoule", category:"Řasy"},
+{name:"šroubatka", category:"Řasy"}
+];
+
+// ===== STAV =====
+let filtered = [];
+let current = null;
+let index = 0;
+
+let score = 0;
+let total = 0;
+
+let mode = "random";
+
+// ===== NORMALIZACE =====
+function normalize(t){
+    return t.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .trim();
+}
+
+// ===== MENU VÝROBA =====
+function buildSelector(){
+
+    let container = document.getElementById("selector");
+    container.innerHTML = "";
+
+    let groups = {};
+
+    data.forEach(d=>{
+        if(!groups[d.category]) groups[d.category] = [];
+        groups[d.category].push(d);
+    });
+
+    for(let cat in groups){
+
+        let allChecked = groups[cat].map(x => x.name);
+
+        let box = document.createElement("div");
+        box.className = "category-box";
+
+        box.innerHTML = `
+        <div class="category-header">
+            <span onclick="toggleCategory(this)">${cat}</span>
+            <input type="checkbox" checked onchange="toggleGroup(this,'${cat}')">
+        </div>
+
+        <div class="org-list">
+            ${groups[cat].map(o=>`
+                <div class="org-item">
+                    <span>${o.name}</span>
+                    <input type="checkbox" value="${o.name}" checked>
+                </div>
+            `).join("")}
+        </div>
+        `;
+
+        container.appendChild(box);
+    }
+}
+
+// ===== TOGGLE CELÉ KATEGORIE =====
+function toggleGroup(master, category){
+
+    let box = master.closest(".category-box");
+    let checks = box.querySelectorAll("input[type=checkbox]:not(:first-child)");
+
+    checks.forEach(c=>{
+        c.checked = master.checked;
+    });
+}
+
+// ===== ZOBRAZENÍ / SKRYTÍ DETAILU =====
+function toggleCategory(el){
+    let list = el.closest(".category-box").querySelector(".org-list");
+    list.style.display = (list.style.display === "none") ? "block" : "none";
+}
+
+// ===== NASTAVENÍ =====
+function applySettings(){
+
+    let checks = document.querySelectorAll("#selector .org-item input");
+    let selected = [];
+
+    checks.forEach(c=>{
+        if(c.checked) selected.push(c.value);
+    });
+
+    filtered = data.filter(d => selected.includes(d.name));
+
+    mode = document.getElementById("mode").value;
+
+    if(filtered.length === 0){
+        alert("Vyber aspoň jeden organismus!");
+        return;
+    }
+
+    score = 0;
+    total = 0;
+    index = 0;
+
+    updateScore();
+    next();
+}
+
+// ===== MENU =====
+function toggleSettings(){
+    let s = document.getElementById("settings");
+    s.style.display = (s.style.display === "none" || s.style.display === "") ? "block" : "none";
+}
+
+// ===== DALŠÍ =====
+function next(){
+
+    if(mode === "random"){
+        current = filtered[Math.floor(Math.random() * filtered.length)];
+    }else{
+        current = filtered[index];
+        index++;
+        if(index >= filtered.length) index = 0;
+    }
+
+    document.getElementById("category").textContent = current.category;
+    document.getElementById("answer").value = "";
+    document.getElementById("result").textContent = "";
+}
+
+// ===== KONTROLA =====
+function check(){
+    let user = normalize(document.getElementById("answer").value);
+    let correct = normalize(current.name);
+
+    total++;
+
+    if(user === correct){
+        score++;
+        document.getElementById("result").textContent = "✅ Správně";
+    }else{
+        document.getElementById("result").textContent =
+            "❌ Správně bylo: " + current.name;
+    }
+
+    updateScore();
+    setTimeout(next, 600);
+}
+
+// ===== NEVÍM =====
+function skip(){
+    total++;
+    document.getElementById("result").textContent =
+        "➡️ Správně: " + current.name;
+
+    updateScore();
+    setTimeout(next, 600);
+}
+
+// ===== RESET =====
+function restart(){
+    score = 0;
+    total = 0;
+    updateScore();
+    next();
+}
+
+// ===== SCORE =====
+function updateScore(){
+    document.getElementById("score").textContent = score;
+    document.getElementById("total").textContent = total;
+}
+
+// START
+buildSelector();
+applySettings();
+
+</script>
+
+</body>
+</html>
